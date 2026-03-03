@@ -654,6 +654,16 @@ export const exportToFileIcon = createIcon(
   { width: 512, height: 512 },
 );
 
+// Google Drive icon
+export const GoogleDriveIcon = createIcon(
+  <g>
+    <path d="M6.663 21.673l2.312-4h12.665l-2.312 4z" fill="#3777e3" />
+    <path d="M21.64 17.673L14.973 6.007 12.66 10l4.355 7.673z" fill="#ffcf63" />
+    <path d="M9.025 6.007H14.973l-6.66 11.666H2.36z" fill="#11a861" />
+  </g>,
+  { width: 24, height: 24 },
+);
+
 export const zoomIn = createIcon(
   "M416 208H272V64c0-17.67-14.33-32-32-32h-32c-17.67 0-32 14.33-32 32v144H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h144v144c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32V304h144c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32z",
   { width: 448, height: 512 },
