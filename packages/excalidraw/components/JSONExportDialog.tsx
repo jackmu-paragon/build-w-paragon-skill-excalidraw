@@ -1,6 +1,6 @@
 import React from "react";
 
-import { getFrame } from "@excalidraw/common";
+import { DEFAULT_FILENAME, getFrame, MIME_TYPES } from "@excalidraw/common";
 import { paragon } from "@useparagon/connect";
 
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
@@ -9,6 +9,7 @@ import { actionSaveFileToDisk } from "../actions/actionExport";
 
 import { trackEvent } from "../analytics";
 import { nativeFileSystemSupported } from "../data/filesystem";
+import { serializeAsJSON } from "../data/json";
 import { t } from "../i18n";
 
 import { Card } from "./Card";
@@ -21,6 +22,12 @@ import "./ExportDialog.scss";
 import type { ActionManager } from "../actions/manager";
 
 import type { ExportOpts, BinaryFiles, UIAppState } from "../types";
+
+const stringToHex = (str: string): string => {
+  return Array.from(new TextEncoder().encode(str))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
 
 export type ExportCB = (
   elements: readonly NonDeletedExcalidrawElement[],
@@ -49,6 +56,7 @@ const JSONExportModal = ({
   const [isParagonReady, setIsParagonReady] = React.useState(false);
   const [isGoogleDriveConnected, setIsGoogleDriveConnected] =
     React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
 
   // Initialize Paragon SDK
   React.useEffect(() => {
@@ -92,14 +100,63 @@ const JSONExportModal = ({
     }
 
     if (isGoogleDriveConnected) {
-      // TODO: Implement save to Google Drive using ActionKit
-      console.log("Ready to save to Google Drive!", { elements, files });
-      trackEvent("export", "googledrive", `ui (${getFrame()})`);
+      setIsSaving(true);
+      try {
+        trackEvent("export", "googledrive", `ui (${getFrame()})`);
+
+        const projectId = import.meta.env.VITE_PARAGON_PROJECT_ID;
+        const paragonToken = import.meta.env.VITE_PARAGON_TOKEN;
+        const filename = `${appState.name || DEFAULT_FILENAME}.excalidraw`;
+
+        // Serialize the drawing data
+        const serialized = serializeAsJSON(elements, appState, files, "local");
+        const hexData = stringToHex(serialized);
+
+        // Call ActionKit to save to Google Drive
+        const response = await fetch(
+          `https://actionkit.useparagon.com/projects/${projectId}/actions`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${paragonToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              action: "GOOGLE_DRIVE_SAVE_FILE",
+              parameters: {
+                filename,
+                file: {
+                  data: hexData,
+                  dataType: "FILE",
+                  mimeType: MIME_TYPES.excalidraw,
+                },
+              },
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(
+            errorData.message || "Failed to save to Google Drive",
+          );
+        }
+
+        // Success: close dialog and show toast (matching actionSaveFileToDisk pattern)
+        setAppState({
+          openDialog: null,
+          toast: { message: t("toast.fileSaved") },
+        });
+      } catch (error: any) {
+        console.error("Failed to save to Google Drive:", error);
+        setAppState({ errorMessage: error.message });
+      } finally {
+        setIsSaving(false);
+      }
     } else {
       paragon.connect("googledrive", {
         onSuccess: () => {
           setIsGoogleDriveConnected(true);
-          console.log("Google Drive connected successfully!");
         },
         onError: (error: Error) => {
           console.error("Failed to connect Google Drive:", error);
@@ -164,18 +221,25 @@ const JSONExportModal = ({
             {isGoogleDriveConnected
               ? "Save your drawing to Google Drive"
               : "Connect to Google Drive to save your drawings"}
+            {!nativeFileSystemSupported &&
+              actionManager.renderAction("changeProjectName")}
           </div>
           <ToolButton
             className="Card-button"
             type="button"
             title={
-              isGoogleDriveConnected ? "Save to Drive" : "Connect Google Drive"
+              isSaving
+                ? "Saving..."
+                : isGoogleDriveConnected
+                  ? "Save to Drive"
+                  : "Connect Google Drive"
             }
             aria-label={
               isGoogleDriveConnected ? "Save to Drive" : "Connect Google Drive"
             }
             showAriaLabel={true}
             onClick={handleGoogleDriveClick}
+            disabled={isSaving}
           />
         </Card>
       </div>
