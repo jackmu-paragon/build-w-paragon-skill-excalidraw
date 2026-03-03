@@ -1,6 +1,7 @@
 import React from "react";
 
 import { getFrame } from "@excalidraw/common";
+import { paragon } from "@useparagon/connect";
 
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
@@ -13,7 +14,7 @@ import { t } from "../i18n";
 import { Card } from "./Card";
 import { Dialog } from "./Dialog";
 import { ToolButton } from "./ToolButton";
-import { exportToFileIcon, LinkIcon } from "./icons";
+import { exportToFileIcon, GoogleDriveIcon, LinkIcon } from "./icons";
 
 import "./ExportDialog.scss";
 
@@ -45,6 +46,69 @@ const JSONExportModal = ({
   exportOpts: ExportOpts;
   canvas: HTMLCanvasElement;
 }) => {
+  const [isParagonReady, setIsParagonReady] = React.useState(false);
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] =
+    React.useState(false);
+
+  // Initialize Paragon SDK
+  React.useEffect(() => {
+    const initParagon = async () => {
+      const projectId = import.meta.env.VITE_PARAGON_PROJECT_ID;
+      const paragonToken = import.meta.env.VITE_PARAGON_TOKEN;
+
+      if (!projectId) {
+        console.warn("VITE_PARAGON_PROJECT_ID not set");
+        return;
+      }
+
+      if (!paragonToken) {
+        console.warn("VITE_PARAGON_TOKEN not set");
+        return;
+      }
+
+      try {
+        await paragon.authenticate(projectId, paragonToken);
+        setIsParagonReady(true);
+
+        // Check if Google Drive is connected
+        const user = paragon.getUser();
+        if (user?.authenticated) {
+          const integrations = user.integrations || {};
+          const googleDrive = integrations.googledrive;
+          setIsGoogleDriveConnected(googleDrive?.enabled === true);
+        }
+      } catch (error) {
+        console.error("Failed to initialize Paragon:", error);
+      }
+    };
+
+    initParagon();
+  }, []);
+
+  const handleGoogleDriveClick = async () => {
+    if (!isParagonReady) {
+      console.warn("Paragon not ready yet");
+      return;
+    }
+
+    if (isGoogleDriveConnected) {
+      // TODO: Implement save to Google Drive using ActionKit
+      console.log("Ready to save to Google Drive!", { elements, files });
+      trackEvent("export", "googledrive", `ui (${getFrame()})`);
+    } else {
+      paragon.connect("googledrive", {
+        onSuccess: () => {
+          setIsGoogleDriveConnected(true);
+          console.log("Google Drive connected successfully!");
+        },
+        onError: (error: Error) => {
+          console.error("Failed to connect Google Drive:", error);
+          setAppState({ errorMessage: error.message });
+        },
+      });
+    }
+  };
+
   const { onExportToBackend } = exportOpts;
   return (
     <div className="ExportDialog ExportDialog--json">
@@ -93,8 +157,27 @@ const JSONExportModal = ({
             />
           </Card>
         )}
-        {exportOpts.renderCustomUI &&
-          exportOpts.renderCustomUI(elements, appState, files, canvas)}
+        <Card color="blue">
+          <div className="Card-icon">{GoogleDriveIcon}</div>
+          <h2>Google Drive</h2>
+          <div className="Card-details">
+            {isGoogleDriveConnected
+              ? "Save your drawing to Google Drive"
+              : "Connect to Google Drive to save your drawings"}
+          </div>
+          <ToolButton
+            className="Card-button"
+            type="button"
+            title={
+              isGoogleDriveConnected ? "Save to Drive" : "Connect Google Drive"
+            }
+            aria-label={
+              isGoogleDriveConnected ? "Save to Drive" : "Connect Google Drive"
+            }
+            showAriaLabel={true}
+            onClick={handleGoogleDriveClick}
+          />
+        </Card>
       </div>
     </div>
   );
